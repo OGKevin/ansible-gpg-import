@@ -1,52 +1,21 @@
 ---
 - name: Make sure the import directory exists
-  become: yes
-  become_user: "{{ gpg_user }}"
   tempfile:
     prefix: "gpg-import"
     state: directory
   register: gpg_import_directory
 
 - name: Copy gpg keys
-  become: yes
-  become_user: "{{ gpg_user }}"
   copy:
-    src: "{{ item.src }}"
+    content: "{{ item.src }}"
     dest: "{{ gpg_import_directory.path }}/{{ item.name }}"
-    owner: "{{ gpg_user }}"
-    group: "{{ gpg_group }}"
     mode:  0600
+  no_log: true
   with_items:
-    - { name: private.key, src: "{{ gpg_private_key }}" }
-    - { name: public.key, src: "{{ gpg_public_key }}" }
-    - { name: trust, src: "{{ gpg_trust_file }}" }
-
-- name: Make sure the GPG config exists
-  become: yes
-  become_user: "{{ gpg_user }}"
-  command: "gpg --list-keys"
-  args:
-    creates: "{{ gpg_home }}/.gnupg"
-
-- name: Import public key
-  become: yes
-  become_user: "{{ gpg_user }}"
-  command: "gpg --trustdb-name {{ gpg_trustdb_file }} --import {{ gpg_import_directory.path }}/public.key"
+    - name: "private.key"
+      src: "{{ gpg_private_key }}"
 
 - name: Import private key
-  become: yes
-  become_user: "{{ gpg_user }}"
-  command: "gpg --allow-secret-key-import{% if gpg_private_key_passphrase|length > 0 %} --batch --passphrase=\"{{ gpg_private_key_passphrase }}\"{% endif %} --import {{ gpg_import_directory.path }}/private.key"
+  command: "gpg --allow-secret-key-import --batch --passphrase=\"{{ gpg_private_key_passphrase }}\" --import {{ gpg_import_directory.path }}/private.key"
   register: gpg_private_key_import_status
   ignore_errors: true
-
-- name: Check if private key imported successfully
-  fail:
-    msg: "An error occurred while importing the private key"
-  when: gpg_private_key_import_status.rc != 0 and "already in secret keyring" not in gpg_private_key_import_status.stderr
-
-- name: Add trust
-  become: yes
-  become_user: "{{ gpg_user }}"
-  command: "gpg --import-ownertrust {{ gpg_import_directory.path }}/trust"
-  changed_when: output is defined and output.stdout != ""
